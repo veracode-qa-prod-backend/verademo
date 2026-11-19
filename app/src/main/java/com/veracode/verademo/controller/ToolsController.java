@@ -3,6 +3,8 @@ package com.veracode.verademo.controller;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletContext;
@@ -46,8 +48,14 @@ public class ToolsController {
 		String output = "";
 		Process proc;
 
-		logger.info("Pinging: " + host);
+		try {
+			String safeHost = URLEncoder.encode(host, "UTF-8");
+			logger.info("Pinging: " + safeHost);
+		} catch (UnsupportedEncodingException e) {
+			logger.info("Pinging: [encoding error]");
+		}
 
+		BufferedReader br = null;
 		try {
 			/* START EXAMPLE VULNERABILITY */
 			proc = Runtime.getRuntime().exec(new String[] { "bash", "-c", "ping -c1 " + host });
@@ -55,7 +63,7 @@ public class ToolsController {
 
 			proc.waitFor(5, TimeUnit.SECONDS);
 			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
-			BufferedReader br = new BufferedReader(isr);
+			br = new BufferedReader(isr);
 
 			String line;
 
@@ -68,6 +76,14 @@ public class ToolsController {
 			logger.error(ex);
 		} catch (InterruptedException ex) {
 			logger.error(ex);
+		} finally {
+			if (br != null) {
+				try {
+					br.close();
+				} catch (IOException e) {
+					logger.error("Error closing BufferedReader", e);
+				}
+			}
 		}
 
 		return output;
@@ -78,6 +94,7 @@ public class ToolsController {
 
 		String output = "";
 		Process proc;
+		BufferedReader br = null;
 		try {
 			/* START EXAMPLE VULNERABILITY */
 			proc = Runtime.getRuntime().exec(new String[] { "bash", "-c", cmd });
@@ -85,7 +102,7 @@ public class ToolsController {
 
 			proc.waitFor(5, TimeUnit.SECONDS);
 			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
-			BufferedReader br = new BufferedReader(isr);
+			br = new BufferedReader(isr);
 
 			String line;
 
@@ -96,6 +113,14 @@ public class ToolsController {
 			logger.error(ex);
 		} catch (InterruptedException ex) {
 			logger.error(ex);
+		} finally {
+			if (br != null) {
+				try {
+					br.close();
+				} catch (IOException e) {
+					logger.error("Error closing BufferedReader", e);
+				}
+			}
 		}
 
 		return output;
