@@ -3,6 +3,8 @@ package com.veracode.verademo.controller;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.concurrent.TimeUnit;
 
 import javax.servlet.ServletContext;
@@ -46,7 +48,12 @@ public class ToolsController {
 		String output = "";
 		Process proc;
 
-		logger.info("Pinging: " + host);
+		try {
+			String safeHost = URLEncoder.encode(host, "UTF-8");
+			logger.info("Pinging: " + safeHost);
+		} catch (UnsupportedEncodingException e) {
+			logger.info("Pinging: [encoding error]");
+		}
 
 		try {
 			/* START EXAMPLE VULNERABILITY */
@@ -56,14 +63,17 @@ public class ToolsController {
 			proc.waitFor(5, TimeUnit.SECONDS);
 			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
 			BufferedReader br = new BufferedReader(isr);
+			try {
+				String line;
 
-			String line;
+				while ((line = br.readLine()) != null) {
+					output += line + "\n";
+				}
 
-			while ((line = br.readLine()) != null) {
-				output += line + "\n";
+				logger.info(proc.exitValue());
+			} finally {
+				br.close();
 			}
-
-			logger.info(proc.exitValue());
 		} catch (IOException ex) {
 			logger.error(ex);
 		} catch (InterruptedException ex) {
@@ -86,11 +96,14 @@ public class ToolsController {
 			proc.waitFor(5, TimeUnit.SECONDS);
 			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
 			BufferedReader br = new BufferedReader(isr);
+			try {
+				String line;
 
-			String line;
-
-			while ((line = br.readLine()) != null) {
-				output += line + "\n";
+				while ((line = br.readLine()) != null) {
+					output += line + "\n";
+				}
+			} finally {
+				br.close();
 			}
 		} catch (IOException ex) {
 			logger.error(ex);
