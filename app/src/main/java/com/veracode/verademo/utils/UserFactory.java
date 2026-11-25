@@ -1,11 +1,6 @@
 package com.veracode.verademo.utils;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 
@@ -15,6 +10,8 @@ import javax.servlet.http.HttpServletResponse;
 
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 public class UserFactory {
 	private static final String COOKIE_NAME = "user";
@@ -34,21 +31,18 @@ public class UserFactory {
 			return null;
 		}
 
-		InputStream stream = new ByteArrayInputStream(cookie.getValue().getBytes(StandardCharsets.UTF_8));
-		InputStream decodedstream = Base64.getDecoder().wrap(stream);
-		ObjectInputStream in;
 		try {
-			/* START EXAMPLE VULNERABILITY */
-			in = new ObjectInputStream(decodedstream);
-			User user = (User) in.readObject();
-			in.close();
-			/* END EXAMPLE VULNERABILITY */
+			// Decode Base64 cookie value
+			byte[] decodedBytes = Base64.getDecoder().decode(cookie.getValue());
+			String jsonString = new String(decodedBytes, StandardCharsets.UTF_8);
+
+			// Use JSON deserialization instead of Java object deserialization
+			ObjectMapper objectMapper = new ObjectMapper();
+			User user = objectMapper.readValue(jsonString, User.class);
 
 			return user;
 
 		} catch (IOException e) {
-			e.printStackTrace();
-		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
 		}
 
@@ -77,17 +71,19 @@ public class UserFactory {
 	}
 
 	public static HttpServletResponse updateInResponse(User user, HttpServletResponse response) {
-		ByteArrayOutputStream out = new ByteArrayOutputStream();
-		ObjectOutputStream stream;
 		try {
-			stream = new ObjectOutputStream(out);
-			stream.writeObject(user);
-			stream.flush();
+			// Use JSON serialization instead of Java object serialization
+			ObjectMapper objectMapper = new ObjectMapper();
+			String jsonString = objectMapper.writeValueAsString(user);
+
+			// Encode to Base64
+			byte[] encodedBytes = Base64.getEncoder().encode(jsonString.getBytes(StandardCharsets.UTF_8));
+			String encodedValue = new String(encodedBytes, StandardCharsets.UTF_8);
+
+			Utils.setCookie(response, COOKIE_NAME, encodedValue);
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
-
-		Utils.setCookie(response, COOKIE_NAME, new String(Base64.getEncoder().encode(out.toByteArray())));
 
 		return response;
 	}

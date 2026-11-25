@@ -4,13 +4,15 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.security.SecureRandom;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Timestamp;
-import java.util.Random;
 
 import javax.servlet.ServletContext;
 
@@ -87,7 +89,7 @@ public class ResetController {
 		PreparedStatement commentsStatement = null;
 		java.util.Date now = new java.util.Date();
 
-		Random rand = new Random();
+		SecureRandom rand = new SecureRandom();
 
 		// Drop existing tables and recreate from schema file
 		recreateDatabaseSchema();
@@ -97,7 +99,11 @@ public class ResetController {
 			// Get the Database Connection
 			Class.forName("com.mysql.jdbc.Driver");
 			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
-			logger.info(connect);
+			try {
+				logger.info(URLEncoder.encode(connect.toString(), "UTF-8"));
+			} catch (UnsupportedEncodingException e) {
+				logger.info("Database connection established");
+			}
 			connect.setAutoCommit(false);
 
 			// Add the users
@@ -105,7 +111,11 @@ public class ResetController {
 			usersStatement = connect.prepareStatement(
 					"INSERT INTO users (username, password, password_hint, created_at, last_login, real_name, blab_name) values (?, ?, ?, ?, ?, ?, ?);");
 			for (int i = 0; i < users.length; i++) {
-				logger.info("Adding user " + users[i].getUserName());
+				try {
+					logger.info("Adding user " + URLEncoder.encode(users[i].getUserName(), "UTF-8"));
+				} catch (UnsupportedEncodingException e) {
+					logger.info("Adding user");
+				}
 				usersStatement.setString(1, users[i].getUserName());
 				usersStatement.setString(2, users[i].getPassword());
 				usersStatement.setString(3, users[i].getPasswordHint());
@@ -128,7 +138,11 @@ public class ResetController {
 						String blabber = users[i].getUserName();
 						String listener = users[j].getUserName();
 
-						logger.info("Adding " + listener + " as a listener of " + blabber);
+						try {
+							logger.info("Adding " + URLEncoder.encode(listener, "UTF-8") + " as a listener of " + URLEncoder.encode(blabber, "UTF-8"));
+						} catch (UnsupportedEncodingException e) {
+							logger.info("Adding listener");
+						}
 
 						listenersStatement.setString(1, blabber);
 						listenersStatement.setString(2, listener);
@@ -189,7 +203,11 @@ public class ResetController {
 					// get the number or seconds until some time in the last 30 days.
 					long vary = rand.nextInt(30 * 24 * 3600);
 
-					logger.info("Adding a comment from " + username + " on blab ID " + String.valueOf(i));
+					try {
+						logger.info("Adding a comment from " + URLEncoder.encode(username, "UTF-8") + " on blab ID " + String.valueOf(i));
+					} catch (UnsupportedEncodingException e) {
+						logger.info("Adding a comment on blab ID " + String.valueOf(i));
+					}
 					commentsStatement.setInt(1, i);
 					commentsStatement.setString(2, username);
 					commentsStatement.setString(3, comment);

@@ -1,5 +1,7 @@
 package com.veracode.verademo.commands;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -34,18 +36,33 @@ public class IgnoreCommand implements BlabberCommand {
 			action.setString(2, username);
 			action.execute();
 
-			sqlQuery = "SELECT blab_name FROM users WHERE username = '" + blabberUsername + "'";
-			Statement sqlStatement = connect.createStatement();
-			logger.info(sqlQuery);
-			ResultSet result = sqlStatement.executeQuery(sqlQuery);
-			result.next();
+			sqlQuery = "SELECT blab_name FROM users WHERE username = ?";
+			try {
+				logger.info("SELECT blab_name FROM users WHERE username = " + URLEncoder.encode(blabberUsername, "UTF-8"));
+			} catch (UnsupportedEncodingException e) {
+				logger.info(sqlQuery);
+			}
+			try (PreparedStatement sqlStatement = connect.prepareStatement(sqlQuery)) {
+				sqlStatement.setString(1, blabberUsername);
+				try (ResultSet result = sqlStatement.executeQuery()) {
+					result.next();
 
-			/* START EXAMPLE VULNERABILITY */
-			String event = username + " is now ignoring " + blabberUsername + " (" + result.getString(1) + ")";
-			sqlQuery = "INSERT INTO users_history (blabber, event) VALUES (\"" + username + "\", \"" + event + "\")";
-			logger.info(sqlQuery);
-			sqlStatement.execute(sqlQuery);
-			/* END EXAMPLE VULNERABILITY */
+					/* START EXAMPLE VULNERABILITY */
+					String event = username + " is now ignoring " + blabberUsername + " (" + result.getString(1) + ")";
+					sqlQuery = "INSERT INTO users_history (blabber, event) VALUES (?, ?)";
+					try {
+						logger.info("INSERT INTO users_history (blabber, event) VALUES (" + URLEncoder.encode(username, "UTF-8") + ", " + URLEncoder.encode(event, "UTF-8") + ")");
+					} catch (UnsupportedEncodingException e) {
+						logger.info(sqlQuery);
+					}
+					try (PreparedStatement insertStatement = connect.prepareStatement(sqlQuery)) {
+						insertStatement.setString(1, username);
+						insertStatement.setString(2, event);
+						insertStatement.execute();
+					}
+					/* END EXAMPLE VULNERABILITY */
+				}
+			}
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();

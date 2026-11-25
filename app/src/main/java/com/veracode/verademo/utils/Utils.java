@@ -52,8 +52,24 @@ public class Utils {
 	}
 
 	public static void setCookie(HttpServletResponse response, String name, String value) {
-		response.addCookie(new Cookie(name, value));
+		// Sanitize cookie name and value to prevent HTTP Response Splitting (CWE-113)
+		String sanitizedName = sanitizeCRLF(name);
+		String sanitizedValue = sanitizeCRLF(value);
+		response.addCookie(new Cookie(sanitizedName, sanitizedValue));
 		upgradeCookieSecurityForHttpsIfRequired(response);
+	}
+
+	/**
+	 * Removes CRLF characters to prevent HTTP Response Splitting attacks.
+	 * @param input the input string to sanitize
+	 * @return the sanitized string with CRLF characters removed
+	 */
+	private static String sanitizeCRLF(String input) {
+		if (input == null) {
+			return null;
+		}
+		// Remove carriage return (\r) and line feed (\n) characters
+		return input.replaceAll("[\\r\\n]", "");
 	}
 
 	public static String redirect(String destination) {
