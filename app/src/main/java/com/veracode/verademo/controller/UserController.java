@@ -8,6 +8,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Connection;
@@ -38,6 +39,8 @@ import com.veracode.verademo.utils.Constants;
 import com.veracode.verademo.utils.User;
 import com.veracode.verademo.utils.UserFactory;
 import com.veracode.verademo.utils.Utils;
+
+import org.owasp.encoder.Encode;
 
 import org.apache.log4j.LogManager;
 import org.apache.log4j.Logger;
@@ -112,7 +115,11 @@ public class UserController {
 			target = "";
 		}
 
-		logger.info("Entering showLogin with username " + username + " and target " + target);
+		try {
+			logger.info("Entering showLogin with username " + URLEncoder.encode(username, "UTF-8") + " and target " + URLEncoder.encode(target, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("Entering showLogin");
+		}
 
 		model.addAttribute("username", username);
 		model.addAttribute("target", target);
@@ -146,93 +153,81 @@ public class UserController {
 			nextView = Utils.redirect("feed");
 		}
 
-		Connection connect = null;
-		Statement sqlStatement = null;
-
 		try {
 			// Get the Database Connection
 			logger.info("Creating the Database connection");
 			Class.forName("com.mysql.jdbc.Driver");
-			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+			try (Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString())) {
 
-			/* START EXAMPLE VULNERABILITY */
-			// Execute the query
-			logger.info("Creating the Statement");
-			String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username='"
-					+ username + "' and password='" + md5(password) + "';";
-			sqlStatement = connect.createStatement();
-			logger.info("Execute the Statement");
-			ResultSet result = sqlStatement.executeQuery(sqlQuery);
-			/* END EXAMPLE VULNERABILITY */
+				// Execute the query with parameterized statement
+				logger.info("Creating the PreparedStatement");
+				String sqlQuery = "select username, password, password_hint, created_at, last_login, real_name, blab_name from users where username=? and password=?";
+				try (PreparedStatement sqlStatement = connect.prepareStatement(sqlQuery)) {
+					sqlStatement.setString(1, username);
+					sqlStatement.setString(2, sha256(password));
+					logger.info("Execute the PreparedStatement");
+					try (ResultSet result = sqlStatement.executeQuery()) {
 
-			// Did we find exactly 1 user that matched?
-			if (result.first()) {
-				logger.info("User Found.");
-				// Remember the username as a courtesy.
-				Utils.setUsernameCookie(response, result.getString("username"));
+						// Did we find exactly 1 user that matched?
+						if (result.first()) {
+							logger.info("User Found.");
+							// Remember the username as a courtesy.
+							Utils.setUsernameCookie(response, result.getString("username"));
 
-				// If the user wants us to auto-login, store the user details as a cookie.
-				if (remember != null) {
-					User currentUser = new User(result.getString("username"), result.getString("password_hint"),
-							result.getTimestamp("created_at"), result.getTimestamp("last_login"),
-							result.getString("real_name"), result.getString("blab_name"));
+							// If the user wants us to auto-login, store the user details as a cookie.
+							if (remember != null) {
+								User currentUser = new User(result.getString("username"), result.getString("password_hint"),
+										result.getTimestamp("created_at"), result.getTimestamp("last_login"),
+										result.getString("real_name"), result.getString("blab_name"));
 
-					UserFactory.updateInResponse(currentUser, response);
+								UserFactory.updateInResponse(currentUser, response);
+							}
+
+							Utils.setSessionUserName(req, response, result.getString("username"));
+
+							// Update last login timestamp
+							try (PreparedStatement update = connect.prepareStatement("UPDATE users SET last_login=NOW() WHERE username=?;")) {
+								update.setString(1, result.getString("username"));
+								update.execute();
+							}
+						} else {
+							// Login failed...
+							logger.info("User Not Found");
+							model.addAttribute("error", "Login failed. Please try again.");
+							model.addAttribute("target", target);
+							nextView = "login";
+						}
+					}
 				}
-
-				Utils.setSessionUserName(req, response, result.getString("username"));
-
-				// Update last login timestamp
-				PreparedStatement update = connect.prepareStatement("UPDATE users SET last_login=NOW() WHERE username=?;");
-				update.setString(1, result.getString("username"));
-				update.execute();
-			} else {
-				// Login failed...
-				logger.info("User Not Found");
-				model.addAttribute("error", "Login failed. Please try again.");
-				model.addAttribute("target", target);
-				nextView = "login";
 			}
 		} catch (SQLException exceptSql) {
 			logger.error(exceptSql);
-			model.addAttribute("error", exceptSql.getMessage() + "<br/>" + displayErrorForWeb(exceptSql));
+			model.addAttribute("error", "An error occurred during login. Please try again.");
 			model.addAttribute("target", target);
 			nextView = "login";
 		} catch (ClassNotFoundException cnfe) {
 			logger.error(cnfe);
-			model.addAttribute("error", cnfe.getMessage());
+			model.addAttribute("error", "An error occurred during login. Please try again.");
 			model.addAttribute("target", target);
-
-		} finally {
-			try {
-				if (sqlStatement != null) {
-					sqlStatement.close();
-				}
-			} catch (SQLException exceptSql) {
-				logger.error(exceptSql);
-				model.addAttribute("error", exceptSql.getMessage());
-				model.addAttribute("target", target);
-			}
-			try {
-				if (connect != null) {
-					connect.close();
-				}
-			} catch (SQLException exceptSql) {
-				logger.error(exceptSql);
-				model.addAttribute("error", exceptSql.getMessage());
-				model.addAttribute("target", target);
-			}
 		}
 
 		// Redirect to the appropriate place based on login actions above
-		logger.info("Redirecting to view: " + nextView);
+		try {
+			logger.info("Redirecting to view: " + URLEncoder.encode(nextView, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("Redirecting to view");
+		}
 		return nextView;
 	}
 
 	@RequestMapping(value = "/password-hint", method = RequestMethod.GET)
 	@ResponseBody
 	public String showPasswordHint(String username) {
-		logger.info("Entering password-hint with username: " + username);
+		try {
+			logger.info("Entering password-hint with username: " + URLEncoder.encode(username, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("Entering password-hint");
+		}
 
 		if (username == null || username.isEmpty()) {
 			return "No username provided, please type in your username first";
@@ -241,22 +236,35 @@ public class UserController {
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
 
-			Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+			try (Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString())) {
 
-			String sql = "SELECT password_hint FROM users WHERE username = '" + username + "'";
-			logger.info(sql);
-			Statement statement = connect.createStatement();
-			ResultSet result = statement.executeQuery(sql);
-			if (result.first()) {
-				String password = result.getString("password_hint");
-				String formatString = "Username '" + username + "' has password: %.2s%s";
-				logger.info(formatString);
-				return String.format(
-						formatString,
-						password,
-						String.format("%0" + (password.length() - 2) + "d", 0).replace("0", "*"));
-			} else {
-				return "No password found for " + username;
+				String sql = "SELECT password_hint FROM users WHERE username = ?";
+				try {
+					logger.info("Executing password hint query");
+				} catch (Exception e) {
+					logger.info("Executing query");
+				}
+				try (PreparedStatement statement = connect.prepareStatement(sql)) {
+					statement.setString(1, username);
+					try (ResultSet result = statement.executeQuery()) {
+						if (result.first()) {
+							String password = result.getString("password_hint");
+							String safeUsername = Encode.forHtml(username);
+							String formatString = "Username '" + safeUsername + "' has password: %.2s%s";
+							try {
+								logger.info("Password hint found for user");
+							} catch (Exception e) {
+								logger.info("Password hint found");
+							}
+							return String.format(
+									formatString,
+									password,
+									String.format("%0" + (password.length() - 2) + "d", 0).replace("0", "*"));
+						} else {
+							return Encode.forHtml("No password found for " + username);
+						}
+					}
+				}
 			}
 		} catch (ClassNotFoundException e) {
 			e.printStackTrace();
@@ -303,16 +311,20 @@ public class UserController {
 		logger.info("Creating the Database connection");
 		try {
 			Class.forName("com.mysql.jdbc.Driver");
-			Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
+			try (Connection connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString())) {
 
-			String sql = "SELECT username FROM users WHERE username = '" + username + "'";
-			Statement statement = connect.createStatement();
-			ResultSet result = statement.executeQuery(sql);
-			if (result.first()) {
-				model.addAttribute("error", "Username '" + username + "' already exists!");
-				return "register";
-			} else {
-				return "register-finish";
+				String sql = "SELECT username FROM users WHERE username = ?";
+				try (PreparedStatement statement = connect.prepareStatement(sql)) {
+					statement.setString(1, username);
+					try (ResultSet result = statement.executeQuery()) {
+						if (result.first()) {
+							model.addAttribute("error", "Username '" + username + "' already exists!");
+							return "register";
+						} else {
+							return "register-finish";
+						}
+					}
+				}
 			}
 		} catch (SQLException | ClassNotFoundException ex) {
 			logger.error(ex);
@@ -349,7 +361,7 @@ public class UserController {
 		}
 
 		Connection connect = null;
-		Statement sqlStatement = null;
+		PreparedStatement sqlStatement = null;
 
 		try {
 			// Get the Database Connection
@@ -357,23 +369,19 @@ public class UserController {
 			Class.forName("com.mysql.jdbc.Driver");
 			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
 
-			/* START EXAMPLE VULNERABILITY */
-			// Execute the query
+			// Execute the query with parameterized statement
 			String mysqlCurrentDateTime = (new SimpleDateFormat("yyyy-MM-dd HH:mm:ss"))
 					.format(Calendar.getInstance().getTime());
-			StringBuilder query = new StringBuilder();
-			query.append("insert into users (username, password, created_at, real_name, blab_name) values(");
-			query.append("'" + username + "',");
-			query.append("'" + md5(password) + "',");
-			query.append("'" + mysqlCurrentDateTime + "',");
-			query.append("'" + realName + "',");
-			query.append("'" + blabName + "'");
-			query.append(");");
+			String query = "insert into users (username, password, created_at, real_name, blab_name) values(?, ?, ?, ?, ?)";
 
-			sqlStatement = connect.createStatement();
-			sqlStatement.execute(query.toString());
-			logger.info(query.toString());
-			/* END EXAMPLE VULNERABILITY */
+			sqlStatement = connect.prepareStatement(query);
+			sqlStatement.setString(1, username);
+			sqlStatement.setString(2, sha256(password));
+			sqlStatement.setString(3, mysqlCurrentDateTime);
+			sqlStatement.setString(4, realName);
+			sqlStatement.setString(5, blabName);
+			sqlStatement.execute();
+			logger.info("User registered successfully");
 
 			emailUser(username);
 		} catch (SQLException | ClassNotFoundException ex) {
@@ -415,16 +423,14 @@ public class UserController {
 			message.setFrom(new InternetAddress(from));
 			message.addRecipient(Message.RecipientType.TO, new InternetAddress(to));
 
-			/* START EXAMPLE VULNERABILITY */
 			message.setSubject(env.getProperty("mail.subject.new_user") + " " + username);
-			/* END EXAMPLE VULNERABILITY */
 
 			message.setText("A new VeraDemo user registered: " + username);
 
 			logger.info("Sending email to admin");
 			Transport.send(message);
 		} catch (MessagingException mex) {
-			mex.printStackTrace();
+			logger.error("Failed to send email notification");
 		}
 	}
 
@@ -454,7 +460,7 @@ public class UserController {
 			connect = DriverManager.getConnection(Constants.create().getJdbcConnectionString());
 
 			// Find the Blabbers that this user listens to
-			logger.info(sqlMyHecklers);
+			logger.info("Executing hecklers query");
 			myHecklers = connect.prepareStatement(sqlMyHecklers);
 			myHecklers.setString(1, username);
 			ResultSet myHecklersResults = myHecklers.executeQuery();
@@ -471,22 +477,23 @@ public class UserController {
 			// Get the audit trail for this user
 			ArrayList<String> events = new ArrayList<String>();
 
-			/* START EXAMPLE VULNERABILITY */
-			String sqlMyEvents = "select event from users_history where blabber=\"" + username
-					+ "\" ORDER BY eventid DESC; ";
-			logger.info(sqlMyEvents);
-			Statement sqlStatement = connect.createStatement();
-			ResultSet userHistoryResult = sqlStatement.executeQuery(sqlMyEvents);
-			/* END EXAMPLE VULNERABILITY */
+			String sqlMyEvents = "select event from users_history where blabber=? ORDER BY eventid DESC";
+			logger.info("Executing user history query");
+			try (PreparedStatement sqlStatement = connect.prepareStatement(sqlMyEvents)) {
+				sqlStatement.setString(1, username);
+				try (ResultSet userHistoryResult = sqlStatement.executeQuery()) {
 
-			while (userHistoryResult.next()) {
-				events.add(userHistoryResult.getString(1));
+					while (userHistoryResult.next()) {
+						events.add(userHistoryResult.getString(1));
+					}
+				}
 			}
 
 			// Get the users information
-			String sql = "SELECT username, real_name, blab_name FROM users WHERE username = '" + username + "'";
-			logger.info(sql);
+			String sql = "SELECT username, real_name, blab_name FROM users WHERE username = ?";
+			logger.info("Executing user info query");
 			myInfo = connect.prepareStatement(sql);
+			myInfo.setString(1, username);
 			ResultSet myInfoResults = myInfo.executeQuery();
 			myInfoResults.next();
 
@@ -503,6 +510,13 @@ public class UserController {
 			try {
 				if (myHecklers != null) {
 					myHecklers.close();
+				}
+			} catch (SQLException exceptSql) {
+				logger.error(exceptSql);
+			}
+			try {
+				if (myInfo != null) {
+					myInfo.close();
 				}
 			} catch (SQLException exceptSql) {
 				logger.error(exceptSql);
@@ -538,7 +552,11 @@ public class UserController {
 			return "{\"message\": \"<script>alert('Error - please login');</script>\"}";
 		}
 
-		logger.info("User is Logged In - continuing... UA=" + request.getHeader("User-Agent") + " U=" + sessionUsername);
+		try {
+			logger.info("User is Logged In - continuing... UA=" + URLEncoder.encode(request.getHeader("User-Agent"), "UTF-8") + " U=" + URLEncoder.encode(sessionUsername, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("User is Logged In - continuing");
+		}
 
 		String oldUsername = sessionUsername;
 
@@ -654,11 +672,19 @@ public class UserController {
 			return Utils.redirect("login?target=profile");
 		}
 
-		logger.info("User is Logged In - continuing... UA=" + request.getHeader("User-Agent") + " U=" + sessionUsername);
+		try {
+			logger.info("User is Logged In - continuing... UA=" + URLEncoder.encode(request.getHeader("User-Agent"), "UTF-8") + " U=" + URLEncoder.encode(sessionUsername, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("User is Logged In - continuing");
+		}
 
 		String path = context.getRealPath("/resources/images") + File.separator + imageName;
 
-		logger.info("Fetching profile image: " + path);
+		try {
+			logger.info("Fetching profile image: " + URLEncoder.encode(path, "UTF-8"));
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("Fetching profile image");
+		}
 
 		InputStream inputStream = null;
 		OutputStream outStream = null;
@@ -672,12 +698,20 @@ public class UserController {
 				// set to binary type if MIME mapping not found
 				mimeType = "application/octet-stream";
 			}
-			logger.info("MIME type: " + mimeType);
+			// Sanitize mimeType to prevent CRLF injection
+			mimeType = mimeType.replaceAll("[\\r\\n]", "");
+			try {
+				logger.info("MIME type: " + URLEncoder.encode(mimeType, "UTF-8"));
+			} catch (java.io.UnsupportedEncodingException e) {
+				logger.info("MIME type determined");
+			}
 
 			// Set content attributes for the response
 			response.setContentType(mimeType);
 			response.setContentLength((int) downloadFile.length());
-			response.setHeader("Content-Disposition", "attachment; filename=" + imageName);
+			// Sanitize imageName to prevent CRLF injection
+			String safeImageName = imageName.replaceAll("[\\r\\n]", "");
+			response.setHeader("Content-Disposition", "attachment; filename=" + safeImageName);
 
 			// get output stream of the response
 			outStream = response.getOutputStream();
@@ -757,7 +791,11 @@ public class UserController {
 			}
 		}
 
-		logger.info("Username: " + username + " already exists. Try again.");
+		try {
+			logger.info("Username: " + URLEncoder.encode(username, "UTF-8") + " already exists. Try again.");
+		} catch (java.io.UnsupportedEncodingException e) {
+			logger.info("Username already exists. Try again.");
+		}
 		return true;
 	}
 
@@ -811,7 +849,11 @@ public class UserController {
 			if (oldImage != null) {
 				String extension = oldImage.substring(oldImage.lastIndexOf("."));
 
-				logger.info("Renaming profile image from " + oldImage + " to " + newUsername + extension);
+				try {
+					logger.info("Renaming profile image from " + URLEncoder.encode(oldImage, "UTF-8") + " to " + URLEncoder.encode(newUsername + extension, "UTF-8"));
+				} catch (java.io.UnsupportedEncodingException e) {
+					logger.info("Renaming profile image");
+				}
 				String path = context.getRealPath("/resources/images") + File.separator;
 
 				File oldName = new File(path + oldImage);
@@ -901,11 +943,11 @@ public class UserController {
 		}
 	}
 
-	private static String md5(String val) {
+	private static String sha256(String val) {
 		MessageDigest md;
 		String ret = null;
 		try {
-			md = MessageDigest.getInstance("MD5");
+			md = MessageDigest.getInstance("SHA-256");
 			md.update(val.getBytes());
 			byte[] digest = md.digest();
 			ret = DatatypeConverter.printHexBinary(digest);

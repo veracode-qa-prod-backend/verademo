@@ -1,5 +1,7 @@
 package com.veracode.verademo.commands;
 
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -34,18 +36,37 @@ public class ListenCommand implements BlabberCommand {
 			action.setString(2, username);
 			action.execute();
 
-			sqlQuery = "SELECT blab_name FROM users WHERE username = '" + blabberUsername + "'";
-			Statement sqlStatement = connect.createStatement();
-			logger.info(sqlQuery);
-			ResultSet result = sqlStatement.executeQuery(sqlQuery);
-			result.next();
+			// Use PreparedStatement to prevent SQL injection
+			sqlQuery = "SELECT blab_name FROM users WHERE username = ?";
+			try (PreparedStatement sqlStatement = connect.prepareStatement(sqlQuery)) {
+				sqlStatement.setString(1, blabberUsername);
+				// Sanitize for log injection
+				try {
+					logger.info(URLEncoder.encode(sqlQuery, "UTF-8"));
+				} catch (UnsupportedEncodingException ex) {
+					logger.info("SELECT query");
+				}
+				try (ResultSet result = sqlStatement.executeQuery()) {
+					result.next();
 
-			/* START EXAMPLE VULNERABILITY */
-			String event = username + " started listening to " + blabberUsername + " (" + result.getString(1) + ")";
-			sqlQuery = "INSERT INTO users_history (blabber, event) VALUES (\"" + username + "\", \"" + event + "\")";
-			logger.info(sqlQuery);
-			sqlStatement.execute(sqlQuery);
-			/* END EXAMPLE VULNERABILITY */
+					/* START EXAMPLE VULNERABILITY - FIXED */
+					String event = username + " started listening to " + blabberUsername + " (" + result.getString(1) + ")";
+					// Use PreparedStatement to prevent SQL injection
+					sqlQuery = "INSERT INTO users_history (blabber, event) VALUES (?, ?)";
+					try (PreparedStatement historyStatement = connect.prepareStatement(sqlQuery)) {
+						historyStatement.setString(1, username);
+						historyStatement.setString(2, event);
+						// Sanitize for log injection
+						try {
+							logger.info(URLEncoder.encode(sqlQuery, "UTF-8"));
+						} catch (UnsupportedEncodingException ex) {
+							logger.info("INSERT query");
+						}
+						historyStatement.execute();
+					}
+					/* END EXAMPLE VULNERABILITY - FIXED */
+				}
+			}
 		} catch (SQLException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
