@@ -48,12 +48,13 @@ public class ToolsController {
 		String output = "";
 		Process proc;
 
+		String safeHost;
 		try {
-			String safeHost = URLEncoder.encode(host, "UTF-8");
-			logger.info("Pinging: " + safeHost);
+			safeHost = URLEncoder.encode(host, "UTF-8");
 		} catch (UnsupportedEncodingException e) {
-			logger.info("Pinging: [encoding error]");
+			safeHost = "[encoding error]";
 		}
+		logger.info("Pinging: " + safeHost);
 
 		try {
 			/* START EXAMPLE VULNERABILITY */
@@ -61,9 +62,8 @@ public class ToolsController {
 			/* END EXAMPLE VULNERABILITY */
 
 			proc.waitFor(5, TimeUnit.SECONDS);
-			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
-			BufferedReader br = new BufferedReader(isr);
-			try {
+			try (InputStreamReader isr = new InputStreamReader(proc.getInputStream());
+			     BufferedReader br = new BufferedReader(isr)) {
 				String line;
 
 				while ((line = br.readLine()) != null) {
@@ -71,8 +71,6 @@ public class ToolsController {
 				}
 
 				logger.info(proc.exitValue());
-			} finally {
-				br.close();
 			}
 		} catch (IOException ex) {
 			logger.error(ex);
@@ -94,16 +92,13 @@ public class ToolsController {
 			/* END EXAMPLE VULNERABILITY */
 
 			proc.waitFor(5, TimeUnit.SECONDS);
-			InputStreamReader isr = new InputStreamReader(proc.getInputStream());
-			BufferedReader br = new BufferedReader(isr);
-			try {
+			try (InputStreamReader isr = new InputStreamReader(proc.getInputStream());
+			     BufferedReader br = new BufferedReader(isr)) {
 				String line;
 
 				while ((line = br.readLine()) != null) {
 					output += line + "\n";
 				}
-			} finally {
-				br.close();
 			}
 		} catch (IOException ex) {
 			logger.error(ex);
